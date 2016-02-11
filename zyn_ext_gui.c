@@ -124,6 +124,7 @@ _parse_env(char *env, char *path)
 {
 	unsigned n = 0;
 	char **args = malloc((n+1) * sizeof(char *));
+	char **oldargs = NULL;
 	if(!args)
 		goto fail;
 	args[n] = NULL;
@@ -132,26 +133,32 @@ _parse_env(char *env, char *path)
 	while(pch)
 	{
 		args[n++] = pch;
+		oldargs = args;
 		args = realloc(args, (n+1) * sizeof(char *));
 		if(!args)
 			goto fail;
+		oldargs = NULL;
 		args[n] = NULL;
 
 		pch = strtok(NULL, " \t");
 	}
 
 	args[n++] = path;
+	oldargs = args;
 	args = realloc(args, (n+1) * sizeof(char *));
 	if(!args)
 		goto fail;
+	oldargs = NULL;
 	args[n] = NULL;
 
 	return args;
 
 fail:
+	if(oldargs)
+		free(oldargs);
 	if(args)
 		free(args);
-	return NULL;
+	return 0;
 }
 
 static inline void
