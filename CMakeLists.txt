@@ -47,3 +47,18 @@ install(TARGETS zyn_ext_gui DESTINATION ${PLUGIN_DEST})
 
 configure_file(${PROJECT_SOURCE_DIR}/manifest.ttl.in ${PROJECT_BINARY_DIR}/manifest.ttl)
 install(FILES ${PROJECT_BINARY_DIR}/manifest.ttl DESTINATION ${PLUGIN_DEST})
+
+# CPack
+set(CPACK_GENERATOR "ZIP")
+
+set(CPACK_PACKAGE_NAME "zyn_ext_gui-lv2")
+set(CPACK_PACKAGE_VERSION "2.5.3")
+set(CPACK_PACKAGE_VERSION_MAJOR 2)
+set(CPACK_PACKAGE_VERSION_MINOR 5)
+set(CPACK_PACKAGE_VERSION_PATCH 3)
+set(CPACK_PACKAGE_CONTACT "Hanspeter Portner <dev@open-music-kontrollers.ch>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "External LV2 UI for ZynAddSubFx")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/COPYING")
+set(CPACK_STRIP_FILES "lib/lv2/zyn_ext_gui.lv2/zyn_ext_gui.so")
+
+include(CPack)
