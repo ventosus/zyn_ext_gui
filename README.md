@@ -5,6 +5,10 @@ This is a toolkit agnostic LV2 UI for
 This gives you an LV2 UI even if ZynAddSubFx has been linked to
 [FLTK](http://www.fltk.org) and does not provide an LV2 UI of its own.
 
+### Binaries
+
+Get them on the [latest release tab](https://github.com/ventosus/zyn_ext_gui/releases/latest)
+
 ### Dependencies
 
 * [LV2](http://lv2plug.in) (LV2 Plugin Standard)
