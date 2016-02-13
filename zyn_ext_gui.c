@@ -32,8 +32,8 @@
 
 #define ZYN_PREFIX	"http://zynaddsubfx.sourceforge.net"
 #define ZYN_URI			ZYN_PREFIX"/ext_gui#"
-#define ZYN_UI_URI	ZYN_URI"ui"
-#define ZYN_KX_URI	ZYN_URI"kx"
+#define ZYN_UI_URI	ZYN_URI"ui1_ui"
+#define ZYN_KX_URI	ZYN_URI"ui2_kx"
 
 typedef struct _UI UI;
 
@@ -51,6 +51,7 @@ struct _UI {
 	uint16_t osc_port;
 	char osc_port_uri [128];
 	bool osc_port_wait;
+	bool is_visible;
 
 	uv_loop_t loop;
 	uv_process_t req;
@@ -213,7 +214,10 @@ _kx_hide(LV2_External_UI_Widget *widget)
 {
 	UI *ui = widget ? (void *)widget - offsetof(UI, kx.widget) : NULL;
 	if(ui)
+	{
+		ui->is_visible = false;
 		_hide(ui);
+	}
 }
 
 static inline void
@@ -221,7 +225,10 @@ _kx_show(LV2_External_UI_Widget *widget)
 {
 	UI *ui = widget ? (void *)widget - offsetof(UI, kx.widget) : NULL;
 	if(ui)
+	{
+		ui->is_visible = true;
 		_show(ui);
+	}
 }
 
 // Show Interface
@@ -230,7 +237,10 @@ _show_cb(LV2UI_Handle instance)
 {
 	UI *ui = instance;
 	if(ui)
+	{
+		ui->is_visible = true;
 		_show(ui);
+	}
 	return 0;
 }
 
@@ -239,7 +249,10 @@ _hide_cb(LV2UI_Handle instance)
 {
 	UI *ui = instance;
 	if(ui)
+	{
+		ui->is_visible = false;
 		_hide(ui);
+	}
 	return 0;
 }
 
@@ -353,7 +366,8 @@ port_event(LV2UI_Handle handle, uint32_t port_index, uint32_t buffer_size,
 		if(ui->osc_port_wait)
 		{
 			ui->osc_port_wait = false;
-			_show(ui);
+			if(ui->is_visible)
+				_show(ui);
 		}
 	}
 }

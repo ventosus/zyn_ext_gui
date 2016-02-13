@@ -19,10 +19,10 @@ kx:Host
 <http://zynaddsubfx.sourceforge.net>
 	#a lv2:Plugin ;
 	#doap:name "ZynAddSubFx" ;
-	ui:ui zyn_ui:ui ;
-	ui:ui zyn_ui:kx .
+	ui:ui zyn_ui:ui1_ui ;
+	ui:ui zyn_ui:ui2_kx .
 
-zyn_ui:ui
+zyn_ui:ui1_ui
 	a ui:UI ;
 	ui:binary <zyn_ext_gui@CMAKE_SHARED_MODULE_SUFFIX@> ;
 	ui:portNotification [
@@ -34,7 +34,7 @@ zyn_ui:ui
 	lv2:requiredFeature ui:idleInterface, ui:portMap, urid:map ;
   lv2:extensionData ui:idleInterface, ui:showInterface .
 
-zyn_ui:kx
+zyn_ui:ui2_kx
 	a kx:Widget ;
 	ui:binary <zyn_ext_gui@CMAKE_SHARED_MODULE_SUFFIX@> ;
 	ui:portNotification [
