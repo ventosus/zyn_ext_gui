@@ -27,7 +27,7 @@
 #include <lv2/lv2plug.in/ns/ext/log/logger.h>
 #include <lv2/lv2plug.in/ns/extensions/ui/ui.h>
 
-#include <uv.h>
+#include <private_ui.h>
 #include <lv2_external_ui.h> // kxstudio external-ui extension
 
 #define ZYN_PREFIX	"http://zynaddsubfx.sourceforge.net"
@@ -35,13 +35,13 @@
 #define ZYN_UI_URI	ZYN_URI"ui1_ui"
 #define ZYN_KX_URI	ZYN_URI"ui2_kx"
 
-typedef struct _UI UI;
+typedef struct _ui_t ui_t;
 
-struct _UI {
+struct _ui_t{
+	LV2_URID_Map *map;
+
 	LV2_Log_Log *log;
 	LV2_Log_Logger logger;
-
-	LV2_URID_Map *map;
 
 	LV2UI_Write_Function write_function;
 	LV2UI_Controller controller;
@@ -53,10 +53,9 @@ struct _UI {
 	bool osc_port_wait;
 	bool is_visible;
 
-	uv_loop_t loop;
-	uv_process_t req;
-	uv_process_options_t opts;
 	int done;
+	
+	spawn_t spawn;
 
 	struct {
 		LV2_External_UI_Widget widget;
@@ -67,110 +66,25 @@ struct _UI {
 static const LV2UI_Descriptor zyn_ui;
 static const LV2UI_Descriptor zyn_kx;
 
-static inline void
-_err2(UI *ui, const char *from)
+// Show Interface
+static inline int
+_show_cb(LV2UI_Handle instance)
 {
-	if(ui->log)
-		lv2_log_error(&ui->logger, "%s", from);
-	else
-		fprintf(stderr, "%s\n", from);
-}
+	ui_t *ui = instance;
 
-static inline void
-_err(UI *ui, const char *from, int ret)
-{
-	if(ui->log)
-		lv2_log_error(&ui->logger, "%s: %s", from, uv_strerror(ret));
-	else
-		fprintf(stderr, "%s: %s\n", from, uv_strerror(ret));
-}
-
-static inline void
-_hide(UI *ui)
-{
-	int ret;
-
-	if(uv_is_active((uv_handle_t *)&ui->req))
-	{
-		if((ret = uv_process_kill(&ui->req, SIGKILL)))
-			_err(ui, "uv_process_kill", ret);
-	}
-	if(!uv_is_closing((uv_handle_t *)&ui->req))
-		uv_close((uv_handle_t *)&ui->req, NULL);
-
-	uv_stop(&ui->loop);
-	uv_run(&ui->loop, UV_RUN_DEFAULT); // cleanup
-	
-	ui->done = 0;
-}
-
-static void
-_on_exit(uv_process_t *req, int64_t exit_status, int term_signal)
-{
-	UI *ui = req ? (void *)req - offsetof(UI, req) : NULL;
-	if(!ui)
-		return;
-
-	ui->done = 1;
-
-	if(ui->kx.host && ui->kx.host->ui_closed && ui->controller)
-	{
-		_hide(ui);
-		ui->kx.host->ui_closed(ui->controller);
-	}
-}
-
-static inline char **
-_parse_env(char *env, char *path)
-{
-	unsigned n = 0;
-	char **args = malloc((n+1) * sizeof(char *));
-	char **oldargs = NULL;
-	if(!args)
-		goto fail;
-	args[n] = NULL;
-
-	char *pch = strtok(env," \t");
-	while(pch)
-	{
-		args[n++] = pch;
-		oldargs = args;
-		args = realloc(args, (n+1) * sizeof(char *));
-		if(!args)
-			goto fail;
-		oldargs = NULL;
-		args[n] = NULL;
-
-		pch = strtok(NULL, " \t");
-	}
-
-	args[n++] = path;
-	oldargs = args;
-	args = realloc(args, (n+1) * sizeof(char *));
-	if(!args)
-		goto fail;
-	oldargs = NULL;
-	args[n] = NULL;
-
-	return args;
-
-fail:
-	if(oldargs)
-		free(oldargs);
-	if(args)
-		free(args);
-	return 0;
-}
-
-static inline void
-_show(UI *ui)
-{
+	ui->is_visible = true;
 	if(ui->osc_port_wait)
-		return;
+	{
+		ui->done = 0; // we need to idle as until we're notified
+		return 0; // we need to be notified about OSC port
+	}
+
+	if(!ui->done)
+		return 0; // already showing
 
 #if defined(_WIN32)
 	const char *command = "cmd /c zynaddsubfx-ext-gui";
-#else // Linux/BSD
+#else
 	const char *command = "zynaddsubfx-ext-gui";
 #endif
 
@@ -178,81 +92,40 @@ _show(UI *ui)
 
 	// get default editor from environment
 	char *dup = strdup(command);
-	char **args = dup ? _parse_env(dup, ui->osc_port_uri) : NULL;
-	
-	ui->opts.exit_cb = _on_exit;
-	ui->opts.file = args ? args[0] : NULL;
-	ui->opts.args = args;
-#if defined(_WIN32)
-	ui->opts.flags = UV_PROCESS_WINDOWS_HIDE | UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS;
-#endif
+	char **args = dup ? _spawn_parse_env(dup, ui->osc_port_uri) : NULL;
 
-	if(!uv_is_active((uv_handle_t *)&ui->req))
-	{
-		int ret;
-		if((ret = uv_spawn(&ui->loop, &ui->req, &ui->opts)))
-			_err(ui, "uv_spawn", ret);
-	}
+	const int status = _spawn_spawn(&ui->spawn, args);
 
-	if(dup)
-		free(dup);
 	if(args)
 		free(args);
-}
+	if(dup)
+		free(dup);
 
-// External-UI Interface
-static inline void
-_kx_run(LV2_External_UI_Widget *widget)
-{
-	UI *ui = widget ? (void *)widget - offsetof(UI, kx.widget) : NULL;
-	if(ui)
-		uv_run(&ui->loop, UV_RUN_NOWAIT);
-}
+	if(status)
+		return -1; // failed to spawn
 
-static inline void
-_kx_hide(LV2_External_UI_Widget *widget)
-{
-	UI *ui = widget ? (void *)widget - offsetof(UI, kx.widget) : NULL;
-	if(ui)
-	{
-		ui->is_visible = false;
-		_hide(ui);
-	}
-}
+	ui->done = 0;
 
-static inline void
-_kx_show(LV2_External_UI_Widget *widget)
-{
-	UI *ui = widget ? (void *)widget - offsetof(UI, kx.widget) : NULL;
-	if(ui)
-	{
-		ui->is_visible = true;
-		_show(ui);
-	}
-}
-
-// Show Interface
-static inline int
-_show_cb(LV2UI_Handle instance)
-{
-	UI *ui = instance;
-	if(ui)
-	{
-		ui->is_visible = true;
-		_show(ui);
-	}
 	return 0;
 }
 
 static inline int
 _hide_cb(LV2UI_Handle instance)
 {
-	UI *ui = instance;
-	if(ui)
+	ui_t *ui = instance;
+
+	if(_spawn_has_child(&ui->spawn))
 	{
-		ui->is_visible = false;
-		_hide(ui);
+		_spawn_kill(&ui->spawn);
+
+		_spawn_waitpid(&ui->spawn, true);
+
+		_spawn_invalidate_child(&ui->spawn);
 	}
+
+	ui->done = 1;
+	ui->is_visible = false;
+
 	return 0;
 }
 
@@ -265,10 +138,18 @@ static const LV2UI_Show_Interface show_ext = {
 static inline int
 _idle_cb(LV2UI_Handle instance)
 {
-	UI *ui = instance;
-	if(!ui)
-		return -1;
-	uv_run(&ui->loop, UV_RUN_NOWAIT);
+	ui_t *ui = instance;
+
+	if(_spawn_has_child(&ui->spawn))
+	{
+		int res;
+		if((res = _spawn_waitpid(&ui->spawn, false)) < 0)
+		{
+			_spawn_invalidate_child(&ui->spawn);
+			ui->done = 1; // xdg-open may return immediately
+		}
+	}
+
 	return ui->done;
 }
 
@@ -276,16 +157,43 @@ static const LV2UI_Idle_Interface idle_ext = {
 	.idle = _idle_cb
 };
 
+// External-ui_t Interface
+static inline void
+_kx_run(LV2_External_UI_Widget *widget)
+{
+	ui_t *handle = (void *)widget - offsetof(ui_t, kx.widget);
+
+	if(_idle_cb(handle))
+	{
+		if(handle->kx.host && handle->kx.host->ui_closed)
+			handle->kx.host->ui_closed(handle->controller);
+		_hide_cb(handle);
+	}
+}
+
+static inline void
+_kx_hide(LV2_External_UI_Widget *widget)
+{
+	ui_t *handle = (void *)widget - offsetof(ui_t, kx.widget);
+
+	_hide_cb(handle);
+}
+
+static inline void
+_kx_show(LV2_External_UI_Widget *widget)
+{
+	ui_t *handle = (void *)widget - offsetof(ui_t, kx.widget);
+
+	_show_cb(handle);
+}
+
 static LV2UI_Handle
 instantiate(const LV2UI_Descriptor *descriptor, const char *plugin_uri,
 	const char *bundle_path, LV2UI_Write_Function write_function,
 	LV2UI_Controller controller, LV2UI_Widget *widget,
 	const LV2_Feature *const *features)
 {
-	if(strcmp(plugin_uri, "http://zynaddsubfx.sourceforge.net"))
-		return NULL;
-
-	UI *ui = calloc(1, sizeof(UI));
+	ui_t *ui = calloc(1, sizeof(ui_t));
 	if(!ui)
 		return NULL;
 
@@ -295,10 +203,10 @@ instantiate(const LV2UI_Descriptor *descriptor, const char *plugin_uri,
 			ui->map = features[i]->data;
 		else if(!strcmp(features[i]->URI, LV2_UI__portMap))
 			ui->port_map = features[i]->data;
-		else if(!strcmp(features[i]->URI, LV2_LOG__log))
-			ui->log = features[i]->data;
 		else if(!strcmp(features[i]->URI, LV2_EXTERNAL_UI__Host) && (descriptor == &zyn_kx))
 			ui->kx.host = features[i]->data;
+		else if(!strcmp(features[i]->URI, LV2_LOG__log))
+			ui->log = features[i]->data;
 	}
 
 	ui->kx.widget.run = _kx_run;
@@ -323,24 +231,17 @@ instantiate(const LV2UI_Descriptor *descriptor, const char *plugin_uri,
 		return NULL;
 	}
 
+	lv2_log_logger_init(&ui->logger, ui->map, ui->log);
+	ui->spawn.logger = &ui->logger;
+
 	// query port index of "control" port
 	ui->osc_port_index = ui->port_map->port_index(ui->port_map->handle, "osc_port");
-
-	if(ui->log)
-		lv2_log_logger_init(&ui->logger, ui->map, ui->log);
 
 	ui->write_function = write_function;
 	ui->controller = controller;
 
-	int ret;
-	if((ret = uv_loop_init(&ui->loop)))
-	{
-		fprintf(stderr, "%s: %s\n", descriptor->URI, uv_strerror(ret));
-		free(ui);
-		return NULL;
-	}
-
 	ui->osc_port_wait = true;
+	ui->done = 1;
 
 	return ui;
 }
@@ -348,16 +249,14 @@ instantiate(const LV2UI_Descriptor *descriptor, const char *plugin_uri,
 static void
 cleanup(LV2UI_Handle handle)
 {
-	UI *ui = handle;
-
-	uv_loop_close(&ui->loop);
+	ui_t *ui = handle;
 }
 
 static void
 port_event(LV2UI_Handle handle, uint32_t port_index, uint32_t buffer_size,
 	uint32_t format, const void *buffer)
 {
-	UI *ui = handle;
+	ui_t *ui = handle;
 
 	if(port_index == ui->osc_port_index)
 	{
@@ -366,8 +265,9 @@ port_event(LV2UI_Handle handle, uint32_t port_index, uint32_t buffer_size,
 		if(ui->osc_port_wait)
 		{
 			ui->osc_port_wait = false;
+			ui->done = 1; // reset flag
 			if(ui->is_visible)
-				_show(ui);
+				_show_cb(ui);
 		}
 	}
 }

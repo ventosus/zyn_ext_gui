@@ -5,6 +5,7 @@
 @prefix ui: <http://lv2plug.in/ns/extensions/ui#> .
 @prefix urid: <http://lv2plug.in/ns/ext/urid#> .
 @prefix atom: <http://lv2plug.in/ns/ext/atom#> .
+@prefix log: <http://lv2plug.in/ns/ext/log#> .
 @prefix kx: <http://kxstudio.sf.net/ns/lv2ext/external-ui#> .
 
 @prefix zyn_ui: <http://zynaddsubfx.sourceforge.net/ext_gui#> .
@@ -32,6 +33,7 @@ zyn_ui:ui1_ui
 		ui:notifyType atom:Float ;
 	] ;
 	lv2:requiredFeature ui:idleInterface, ui:portMap, urid:map ;
+	lv2:optionalFeature log:log ;
   lv2:extensionData ui:idleInterface, ui:showInterface .
 
 zyn_ui:ui2_kx
@@ -43,4 +45,5 @@ zyn_ui:ui2_kx
 		ui:protocol ui:floatProtocol ;
 		ui:notifyType atom:Float ;
 	] ;
-	lv2:requiredFeature kx:Host, ui:portMap, urid:map .
+	lv2:requiredFeature kx:Host, ui:portMap, urid:map ;
+	lv2:optionalFeature log:log .
