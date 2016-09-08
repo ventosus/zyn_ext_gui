@@ -9,6 +9,10 @@ This gives you an LV2 UI even if ZynAddSubFx has been linked to
 
 Get them on the [latest release tab](https://github.com/ventosus/zyn_ext_gui/releases/latest)
 
+### Build status
+
+[![build status](https://gitlab.com/OpenMusicKontrollers/zyn_ext_gui/badges/master/build.svg)](https://gitlab.com/OpenMusicKontrollers/zyn_ext_gui/commits/master)
+
 ### Dependencies
 
 * [LV2](http://lv2plug.in) (LV2 Plugin Standard)
